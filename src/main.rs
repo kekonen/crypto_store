@@ -8,6 +8,14 @@ extern crate rocket;
 
 use rocket_contrib::{Json};
 
+
+struct TradesDriver {
+    
+}
+
+
+///
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Trade {
     side: bool, // sell: 1 true
