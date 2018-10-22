@@ -10,6 +10,7 @@ use rocket::{State};
 use rocket_contrib::{Json};
 use std::collections::{VecDeque};
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 struct TradesHandler {
     // exchanges: String,
@@ -47,6 +48,7 @@ impl TradesHandler {
         if let Some(container) = self.container.get_mut(&key) {
             let capacity = container.capacity();
             println!("cap: {}", capacity)
+            // container.push_front()
         }
     }
 
@@ -102,11 +104,19 @@ struct TickerList {
 }
 
 
+struct Handlers {
+    tradesHandler: TradesHandler
+}
+
+type HandlersMut = Mutex<Handlers>;
+
+
 #[post("/trades/<exchange>/<ticker>", format = "application/json", data = "<trades>")]
-fn trades(handlers: State<Handlers>, exchange: String, ticker: String, trades: Json<TradeList>) -> String {
+fn trades(handlers: State<HandlersMut>, exchange: String, ticker: String, trades: Json<TradeList>) -> String {
     let answer = format!("Incoming, exchange:{}, ticker {}, with data: {}!", exchange, ticker, trades.trades[0].ts);
     println!("{}", answer);
-    handlers.tradesHandler.push(exchange, ticker, &trades.trades);
+    let mut mutHandlers = handlers.lock().unwrap();
+    mutHandlers.tradesHandler.push(exchange, ticker, &trades.trades);
     answer
 }
 
@@ -129,9 +139,6 @@ fn tickers(exchange: String, tickers: Json<TickerList>) -> String {
 
 
 
-struct Handlers {
-    tradesHandler: TradesHandler
-}
 
 
 fn main() {
@@ -159,7 +166,7 @@ fn main() {
     
     rocket::ignite()
     .mount("/", routes![trades, orders, ticker])
-    .manage(Handlers {tradesHandler: TradesHandler::new(exchanges, tickers, path)})
+    .manage(Mutex::new(Handlers { tradesHandler: TradesHandler::new(exchanges, tickers, path)}))
     .launch();
     
 }
