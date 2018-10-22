@@ -14,7 +14,7 @@ use std::sync::Mutex;
 
 struct TradesHandler {
     // exchanges: String,
-    container: HashMap<String, VecDeque<Trade>>,
+    container: HashMap<String, Vec<Trade>>,
     path: String
 }
 
@@ -30,7 +30,7 @@ impl TradesHandler {
                 let key = format!("{}_{}", exch, tick);
                 println!("Inserting key: {}", key);
 
-                container.insert(key, VecDeque::with_capacity(10000));
+                container.insert(key, Vec::with_capacity(10000));
                 // match container.get(&ex) {
                 //     Some(&e) => ex.insert(tick, VecDeque::new()),
                 //     _ => None,
@@ -43,13 +43,28 @@ impl TradesHandler {
 
     fn push(&mut self, exchange: String, ticker: String, trades: &Vec<Trade>) -> () {
         let key = format!("{}_{}", exchange, ticker);
-        // let container = self.container.get(&key);
 
         if let Some(container) = self.container.get_mut(&key) {
             let capacity = container.capacity();
-            println!("cap: {}", capacity)
-            // container.push_front()
+            let length = container.len();
+            let trades_length = trades.len();
+            println!("Container cap: {}, container length: {}, trades_length: {}", capacity, length, trades_length);
+            if (length + trades_length) > capacity {
+                self.release(exchange, ticker).unwrap();
+            }
+
+            // make check batch
+            for &trade in trades {
+                // implement equal to trade, and compare latest ${trades_length or length or 0} on copies and not push if exists, pay attention on that the latest batch(see: 56 "checkbatch")
+                container.push(trade.clone());
+            }
         }
+    }
+
+    fn release(&mut self, exchange: String, ticker: String) -> Option {
+        //serialize vector of trades
+        //push the file into the folder
+        //clean the container
     }
 
 }
@@ -58,7 +73,7 @@ impl TradesHandler {
 
 ///
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 struct Trade {
     side: bool, // sell: 1 true
     price: f64,
