@@ -146,6 +146,124 @@ impl TradesHandler {
 
 
 
+
+
+
+
+
+
+
+struct OrdersHandler {
+    container: HashMap<String, Vec<OrdersList>>,
+    path: String
+}
+
+type OrdersHandlerMut = Mutex<OrdersHandler>;
+
+
+impl OrdersHandler {
+    fn new(exchanges: Vec<String>, tickers: Vec<String>, path: String) -> OrdersHandler {
+        let mut container = HashMap::new();
+        for exchange in exchanges.iter() {
+            let exch = exchange.clone();
+            for ticker in tickers.iter() {
+                let tick = ticker.clone();
+
+                let key = format!("{}_{}", exch, tick);
+                println!("Inserting key: {}", key);
+
+                container.insert(key, Vec::with_capacity(1001));
+            }
+        }
+
+        OrdersHandler{container, path}
+    }
+
+    fn push(&mut self, exchange: String, ticker: String, orderList: &OrdersList) -> () {
+        let key = format!("{}_{}", exchange, ticker);
+
+        if let Some(container) = self.container.get_mut(&key) {
+            let capacity = container.capacity();
+            let length = container.len();
+
+            println!("Container cap: {}, container length: {}", capacity, length);
+            if (length + 1) == capacity {
+                let mut future_file = String::from("");
+                for orderList_temp in container.clone() {
+                    future_file.push('\n');
+                    future_file.push_str(&serde_json::to_string(&orderList_temp).unwrap());
+                }
+
+                println!("full... writing file for key: {}", key);
+                write_file(&format!("out/{}-{}.txt", key, get_time()), &future_file);
+                
+                container.clear();
+                container.push(orderList.clone())
+            } else {
+                container.push(orderList.clone());
+            }
+            println!(" container.len {}, key {}", container.len(), key);
+        }
+    }
+}
+
+
+
+struct TickerHandler {
+    container: HashMap<String, Vec<Ticker>>,
+    path: String
+}
+
+type TickerHandlerMut = Mutex<TickerHandler>;
+
+
+impl TickerHandler {
+    fn new(exchanges: Vec<String>, tickers: Vec<String>, path: String) -> TickerHandler {
+        let mut container = HashMap::new();
+        for exchange in exchanges.iter() {
+            let exch = exchange.clone();
+            for ticker in tickers.iter() {
+                let tick = ticker.clone();
+
+                let key = format!("{}_{}", exch, tick);
+                println!("Inserting key: {}", key);
+
+                container.insert(key, Vec::with_capacity(1001));
+            }
+        }
+
+        TickerHandler{container, path}
+    }
+
+    fn push(&mut self, exchange: String, ticker: String, tickerData: &Ticker) -> () {
+        let key = format!("{}_{}", exchange, ticker);
+
+        if let Some(container) = self.container.get_mut(&key) {
+            let capacity = container.capacity();
+            let length = container.len();
+
+            println!("Container cap: {}, container length: {}", capacity, length);
+            if (length + 1) == capacity {
+                let mut future_file = String::from("");
+                for tickerList_temp in container.clone() {
+                    future_file.push('\n');
+                    future_file.push_str(&serde_json::to_string(&tickerList_temp).unwrap());
+                }
+
+                println!("full... writing file for key: {}", key);
+                write_file(&format!("out/{}-{}.txt", key, get_time()), &future_file);
+                
+                container.clear();
+                container.push(tickerData.clone())
+            } else {
+                container.push(tickerData.clone());
+            }
+            println!(" container.len {}, key {}", container.len(), key);
+        }
+    }
+}
+
+
 ///
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
@@ -162,20 +280,20 @@ struct TradeList {
     trades: Vec<Trade>
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OrderLevel {
     amount: f64,
     price: f64
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OrdersList {
     bids: Vec<OrderLevel>,
     asks: Vec<OrderLevel>,
     ts: u64
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Ticker {
     symbol: String,
     high: f64,
@@ -194,11 +312,11 @@ struct TickerList {
 }
 
 
-struct Handlers {
-    tradesHandler: TradesHandler
-}
+// struct Handlers {
+//     tradesHandler: TradesHandler
+// }
 
-type HandlersMut = Mutex<Handlers>;
+// type HandlersMut = Mutex<Handlers>;
 
 
 #[post("/trades/<exchange>/<ticker>", format = "application/json", data = "<trades>")]
@@ -211,15 +329,19 @@ fn trades(trades_handler: State<TradesHandlerMut>, exchange: String, ticker: Str
 }
 
 #[post("/orders/<exchange>/<ticker>", format = "application/json", data = "<orders>")]
-fn orders(exchange: String, ticker: String, orders: Json<OrdersList>) -> String {
+fn orders(orders_handler: State<OrdersHandlerMut>, exchange: String, ticker: String, orders: Json<OrdersList>) -> String {
     let answer = format!("Incoming, exchange:{}, ticker {}, with data: {}!", exchange, ticker, orders.ts);
-    // println!("{}", answer);
+    let mut mut_handler = orders_handler.lock().unwrap();
+    mut_handler.push(exchange, ticker, &orders);
     answer
 }
 
-#[post("/ticker/<exchange>", format = "application/json", data = "<ticker>")]
-fn ticker(exchange: String, ticker: Json<Ticker>) -> String {
-    format!("Incoming, exchange:{}, with data: {}!", exchange, ticker.symbol)
+#[post("/ticker/<exchange>/<ticker>", format = "application/json", data = "<tickerData>")]
+fn ticker(ticker_handler: State<TickerHandlerMut>, exchange: String, ticker: String, tickerData: Json<Ticker>) -> String {
+    let answer = format!("Incoming, exchange:{}, with data: {}!", exchange, tickerData.symbol);
+    let mut mut_handler = ticker_handler.lock().unwrap();
+    mut_handler.push(exchange, ticker, &tickerData);
+    answer
 }
 
 #[post("/tickers/<exchange>", format = "application/json", data = "<tickers>")]
@@ -247,7 +369,7 @@ fn main() {
 
     // let router = Router {exchanges, currencies, translateExchange, translateCurrency};
     let exchanges = vec!["bitfinex".to_string(), "kraken".to_string(), "poloniex".to_string(), "binance".to_string(), "bittrex".to_string()];
-    let tickers = vec!["BTCUSDT".to_string()];
+    let tickers = vec!["BTCUSDT".to_string(), "ETHUSD".to_string(), "QTUMBTC".to_string(), "XRPBTC".to_string(), "LTCBTC".to_string(), "DASHBTC".to_string(), "XMRBTC".to_string(), "ZECBTC".to_string(), "XLMBTC".to_string(), ];
     let path: String = ".".to_string();
 
     // let tradesHandler = TradesHandler::new(exchanges, tickers, path);
@@ -256,7 +378,9 @@ fn main() {
     
     rocket::ignite()
     .mount("/", routes![trades, orders, ticker])
-    .manage(Mutex::new(TradesHandler::new(exchanges, tickers, path)))
+    .manage(Mutex::new(TradesHandler::new(exchanges.clone(), tickers.clone(), path.clone())))
+    .manage(Mutex::new(OrdersHandler::new(exchanges.clone(), tickers.clone(), path.clone())))
+    .manage(Mutex::new(TickerHandler::new(exchanges.clone(), tickers.clone(), path.clone())))
     .launch();
     
 }
