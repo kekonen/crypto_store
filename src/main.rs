@@ -62,7 +62,7 @@ impl TradesHandler {
                 let key = format!("{}_{}", exch, tick);
                 println!("Inserting key: {}", key);
 
-                container.insert(key, Vec::with_capacity(10000));
+                container.insert(key, Vec::with_capacity(10001));
                 // match container.get(&ex) {
                 //     Some(&e) => ex.insert(tick, VecDeque::new()),
                 //     _ => None,
